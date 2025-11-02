@@ -1,0 +1,89 @@
+import csv
+import os
+from datetime import datetime
+import requests
+
+
+class RequestError(Exception):
+    pass
+
+
+class NotFoundError(RequestError):
+    pass
+
+
+class AccessDeniedError(RequestError):
+    pass
+
+
+def print_timing(func):
+    def wrapper(*args, **kwargs):
+        start = datetime.now()
+        print(f"Start: {start}")
+        result = func(*args, **kwargs)
+        for value in result:
+            yield value
+        end = datetime.now()
+        print(f"Koniec: {end}")
+        print(f"Razem: {end - start}")
+    return wrapper
+
+class FileStats:
+    def __init__(self, url, download_to="latest.csv", delimiter=","):
+        self.url = url
+        self.download_to = download_to
+        self.delimiter = delimiter
+
+    @print_timing
+    def getfile(self):
+        if os.path.exists(self.download_to) and os.path.getsize(self.download_to) > 0:
+            with open(self.download_to) as csvfile:
+                for line in csv.reader(csvfile, delimiter=self.delimiter):
+                    yield line
+        else:
+            with requests.get(self.url, stream=True) as response:
+
+                if response.status_code == 404:
+                    raise NotFoundError
+                if response.status_code == 403:
+                    raise AccessDeniedError
+
+                with open(self.download_to, 'a', newline='') as csvfile:
+                    for line in [line.decode('utf-8').split(',') for line in response.iter_lines() if line]:
+                        csv.writer(csvfile).writerow(line)
+                        yield line
+
+    def do_sum(self, values):
+        return round(sum(values), 4)
+
+    def do_avg(self, values):
+        return round(self.do_sum(values) / len(values), 4)
+
+    def get_stats(self, values):
+        sum_value = self.do_sum(values)
+        avg_value = self.do_avg(values)
+        return [sum_value, avg_value]
+
+    def get_missing(self, line):
+        return [i for i, item in enumerate(line) if item == '-']
+
+    def write_file(self, row_number, values, write_to):
+        with open(write_to, 'a', newline='') as output_file:
+            writer = csv.writer(output_file)
+            if values:
+                if isinstance(values, list):
+                    row = [row_number, *values]
+                else:
+                    row = [row_number, values]
+                writer.writerow(row)
+
+    def run(self):
+        for line in self.getfile():
+            row_number = line[0]
+            values = [float(item) for item in line[1:] if item != '-']
+            self.write_file(row_number, filestats.get_missing(line), 'missing_values.csv')
+            self.write_file(row_number, filestats.get_stats(values), 'values.csv')
+
+
+filestats = FileStats("https://oleksandr-fedoruk.com/wp-content/uploads/2025/10/sample.csv")
+filestats.run()

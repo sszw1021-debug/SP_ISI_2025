@@ -1,0 +1,63 @@
+class Logger:
+    def __enter__(self):
+        print("Start sekcji logowania")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Koniec sekcji logowania")
+
+
+class FileWriter:
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __enter__(self):
+        self.file_handle = open(self.filename, 'w')
+        return self.file_handle
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.file_handle.close()
+
+with FileWriter("day2.txt") as file_handle:
+    file_handle.write("hello")
+
+
+class FileWriter2:
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __enter__(self):
+        self.file_handle = open(self.filename, 'w+')
+        return self.file_handle
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            print(f"Error writing to file {exc_val}")
+            self.file_handle.close()
+            raise exc_type
+        self.file_handle.close()
+
+
+class SafeDivision:
+    def divide(self, a, b):
+        return a / b
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type == ZeroDivisionError:
+            print(f"Nie można dzielić przez zero")
+            return True
+
+
+with Logger():
+    print("*** Sekcja logowania ***")
+
+with SafeDivision() as sd:
+    print(sd.divide(1,0))
+
+with FileWriter("day2.txt") as file_handle:
+    file_handle.write("hello")
+
+with FileWriter2("day2.txt") as file_handle:
+    file_handle.write("hello")

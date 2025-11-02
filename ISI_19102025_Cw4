@@ -1,0 +1,97 @@
+import os
+import random
+from datetime import datetime
+
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, select, delete, ForeignKey, Table, Column
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.orm import relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+subjects_experiments = Table(
+    'subjects_experiments',
+    Base.metadata,
+    Column('experiment_id', ForeignKey('experiment.id')),
+    Column('subject_id', ForeignKey('subject.id')),
+)
+
+
+class Experiment(Base):
+    __tablename__ = 'experiment'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    type: Mapped[int] = mapped_column(Integer)
+    finished: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    datapoints: Mapped[list["DataPoint"]] = relationship("DataPoint", back_populates="experiment")
+    subjects: Mapped["Subject"] = relationship("Subject", back_populates="experiments",
+                                                     secondary="subjects_experiments")
+
+class DataPoint(Base):
+    __tablename__ = 'datapoint'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    experiment_id: Mapped[int] = mapped_column(ForeignKey("experiment.id"))
+    real_value: Mapped[float] = mapped_column(Float)
+    target_value: Mapped[float] = mapped_column(Float)
+
+    experiment: Mapped["Experiment"] = relationship("Experiment", back_populates="datapoints")
+
+
+class Subject(Base):
+    __tablename__ = 'subject'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    gdpr_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
+    experiments: Mapped["Experiment"] = relationship("Experiment", back_populates="subjects", secondary="subjects_experiments")
+
+engine = create_engine("sqlite:///experiments.db", echo=False)
+
+if not os.path.exists("experiments.db"):
+    Base.metadata.create_all(engine)
+
+with Session(engine) as session:
+
+    session.add_all([
+        Experiment(title="One", type=1, created_at=datetime.now()),
+        Experiment(title="Two", type=2, created_at=datetime.now()),
+    ])
+    session.commit()
+
+    for i in range(10):
+        session.add(
+            DataPoint(real_value=random.random(), target_value=random.random(), experiment_id=1)
+        )
+    session.commit()
+
+    experiments = session.scalars(select(Experiment)).all()
+    datapoints = session.scalars(select(DataPoint)).all()
+
+    print(f"{len(experiments)} experiments, {len(datapoints)} datapoints")
+
+    for experiment in experiments:
+        print('experiment', type(experiment), experiment.title, experiment.type, experiment.created_at, experiment.finished)
+
+    for datapoint in datapoints:
+        print('datapoint', type(datapoint), datapoint.real_value, datapoint.target_value)
+
+    for experiment in experiments:
+        experiment.finished = True
+        session.commit()
+
+    for experiment in experiments:
+        print(experiment.title, experiment.finished)
+
+    for model in [Experiment, DataPoint]:
+        stmt = delete(model).where(model.id > 0)
+        session.execute(stmt)
+        session.commit()
